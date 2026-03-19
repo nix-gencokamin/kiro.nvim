@@ -177,11 +177,11 @@ function M.cancel()
   transport.notify("session/cancel", { sessionId = session_id })
 end
 
--- Stop the client
-function M.stop()
-  transport.stop()
+-- Stop the client, calling cb when the process has actually exited
+function M.stop(cb)
   session_id = nil
   initialized = false
+  transport.stop(cb)
 end
 
 function M.is_running()

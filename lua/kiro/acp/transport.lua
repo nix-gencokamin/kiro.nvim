@@ -12,6 +12,7 @@ local read_buf = ""   -- partial line buffer
 local message_handlers = {}  -- id -> callback for pending requests
 local notification_handler = nil  -- callback for notifications/server requests
 local next_id = 1
+local pending_stop_cb = nil  -- called when process actually exits after stop()
 
 local function get_id()
   local id = next_id
@@ -102,6 +103,17 @@ function M.set_notification_handler(handler)
   notification_handler = handler
 end
 
+-- Stop the subprocess, calling cb when the process has actually exited
+function M.stop(cb)
+  if not process then
+    if cb then cb() end
+    return
+  end
+  -- Store cb to fire from the exit callback
+  pending_stop_cb = cb
+  process:kill("sigterm")
+end
+
 -- Start the kiro-cli acp subprocess
 function M.start(cmd, on_exit_cb)
   if process then
@@ -119,6 +131,12 @@ function M.start(cmd, on_exit_cb)
   local args = vim.list_slice(parts, 2)
   table.insert(args, "acp")
 
+  -- Resolve binary to full path so vim.loop.spawn can find it regardless of PATH
+  local resolved = vim.fn.exepath(bin)
+  if resolved ~= "" then
+    bin = resolved
+  end
+
   local handle, pid = vim.loop.spawn(bin, {
     args = args,
     stdio = { stdin, stdout, stderr_pipe },
@@ -135,6 +153,12 @@ function M.start(cmd, on_exit_cb)
       vim.schedule(function()
         cb({ code = -1, message = "process exited (code=" .. code .. ")" }, nil)
       end)
+    end
+    -- Fire stop callback if one is pending
+    local stop_cb = pending_stop_cb
+    pending_stop_cb = nil
+    if stop_cb then
+      vim.schedule(stop_cb)
     end
     if on_exit_cb then
       vim.schedule(function() on_exit_cb(code, signal) end)
@@ -168,13 +192,6 @@ function M.start(cmd, on_exit_cb)
   return true
 end
 
--- Stop the subprocess
-function M.stop()
-  if process then
-    process:kill("sigterm")
-    -- uv will call the exit callback which cleans up
-  end
-end
 
 function M.is_running()
   return process ~= nil

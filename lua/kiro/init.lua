@@ -82,13 +82,11 @@ function M.start(cb)
   client.on_update(on_update)
   client.on_request(on_request)
 
-  log.info("Starting Kiro CLI...")
   client.start(config.options, function(ok)
     if ok then
-      log.info("Kiro connected")
-      chat.add_info("Connected to Kiro CLI. Type :KiroChat to open the chat panel.")
+      chat.add_info("Connected to Kiro CLI.")
     else
-      log.error("Failed to connect to Kiro CLI. Is kiro-cli installed?")
+      chat.add_info("ERROR: Failed to start kiro-cli. Check that it is installed and on PATH.")
     end
     if cb then cb(ok) end
   end)
@@ -103,23 +101,24 @@ end
 
 -- Toggle the chat panel
 function M.toggle()
+  if chat.is_open() then
+    chat.close()
+    return
+  end
+  -- Open window immediately, then connect if needed
+  chat.open(config.options.window)
   if not client.is_running() then
-    M.start(function(ok)
-      if ok then chat.toggle(config.options.window) end
-    end)
-  else
-    chat.toggle(config.options.window)
+    chat.add_info("Connecting to Kiro CLI...")
+    M.start()
   end
 end
 
 -- Open/focus the chat panel
 function M.open()
+  chat.open(config.options.window)
   if not client.is_running() then
-    M.start(function(ok)
-      if ok then chat.open(config.options.window) end
-    end)
-  else
-    chat.open(config.options.window)
+    chat.add_info("Connecting to Kiro CLI...")
+    M.start()
   end
 end
 
@@ -250,16 +249,20 @@ function M.add_file(filepath)
   log.info("Added to context:", vim.fn.fnamemodify(filepath, ":~:."))
 end
 
--- Clear the chat buffer
+-- Clear the chat buffer and start a new session
 function M.clear()
   chat.clear()
-  client.stop()
-  client.on_update(on_update)
-  client.on_request(on_request)
-  client.start(config.options, function(ok)
-    if ok then
-      chat.add_info("New session started.")
-    end
+  chat.open(config.options.window)
+  chat.add_info("Starting new session...")
+  -- Wait for process to actually exit before restarting
+  client.stop(function()
+    client.on_update(on_update)
+    client.on_request(on_request)
+    client.start(config.options, function(ok)
+      if ok then
+        chat.add_info("New session started.")
+      end
+    end)
   end)
 end
 
